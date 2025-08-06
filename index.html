@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Robot Arm Control Panel</title>
+<style>
+body{font-family:sans-serif;margin:2rem}
+h1{margin-bottom:.5rem}
+.slider-row{display:flex;align-items:center;margin:.25rem 0}
+.slider-row label{width:70px}
+.slider-row input[type=range]{flex:1;margin:0 8px}
+.buttons{margin:.75rem 0}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #ccc;padding:4px;text-align:center}
+button{padding:4px 8px;margin-right:4px}
+</style>
+</head>
+<body>
+<h1>Robot Arm Control Panel</h1>
+
+<div id="sliders"></div>
+
+<div class="buttons">
+  <button id="resetBtn">Reset</button>
+  <button id="saveBtn">Save Pose</button>
+  <button id="runBtn">Run</button>
+</div>
+
+<table id="poseTable">
+  <thead>
+    <tr>
+      <th>#</th><th>Motor 1</th><th>Motor 2</th><th>Motor 3</th>
+      <th>Motor 4</th><th>Motor 5</th><th>Motor 6</th><th>Action</th> 
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+const API = 'api/';                // folder for the PHP endpoints
+
+// ---------- build sliders ----------
+const slidersDiv = document.getElementById('sliders');
+const sliders = [];
+for (let i=1;i<=6;i++){
+  const row = document.createElement('div');
+  row.className='slider-row';
+  row.innerHTML =
+   `<label>Motor ${i}:</label>
+    <input type="range" min="0" max="180" value="90" id="s${i}">
+    <span id="val${i}">90</span>`;
+  slidersDiv.appendChild(row);
+  const input = row.querySelector('input');
+  const span  = row.querySelector('span');
+  input.oninput = ()=> span.textContent = input.value;
+  sliders.push(input);
+}
+
+// ---------- helper ----------
+const values = () => sliders.map(s=>+s.value);
+const setValues = arr => sliders.forEach((s,i)=>{s.value=arr[i];s.oninput()});
+
+// ---------- buttons ----------
+document.getElementById('resetBtn').onclick = ()=> setValues([90,90,90,90,90,90]);
+
+document.getElementById('saveBtn').onclick = async ()=>{
+  await fetch(API+'save_pose.php',{method:'POST',body:JSON.stringify(values())});
+  loadTable();
+};
+
+document.getElementById('runBtn').onclick = async ()=>{
+  await fetch(API+'run_pose.php',{method:'POST',body:JSON.stringify(values())});
+  alert('Pose sent to ESP32!');
+};
+
+
+async function loadTable(){
+  const data  = await (await fetch(API+'get_poses.php')).json();
+  const tbody = document.querySelector('#poseTable tbody');
+  tbody.innerHTML = '';
+  data.forEach(p=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td><strong>${p.id}</strong></td>` +   <!-- ★ use the real id -->
+      Array.from({length:6},(_,i)=>`<td>${p['servo'+(i+1)]}</td>`).join('') +
+      `<td>
+         <button onclick='loadPose(${p.id})'>Load</button>
+         <button onclick='removePose(${p.id})'>Remove</button>
+       </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+window.loadPose = async id=>{
+  const pose = await (await fetch(API+`get_pose.php?id=${id}`)).json();
+  setValues([pose.servo1,pose.servo2,pose.servo3,pose.servo4,pose.servo5,pose.servo6]);
+};
+window.removePose = async id=>{
+  await fetch(API+`delete_pose.php?id=${id}`);
+  loadTable();
+};
+loadTable();
+</script>
+</body>
+</html>
